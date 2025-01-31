@@ -4,7 +4,7 @@ import { CopyToClipboard } from "react-copy-to-clipboard";
 import "./App.css";
 
 const socket = io("https://tictac-227035147749.us-central1.run.app", {
-  transports: ['websocket', 'polling']
+  transports: ["websocket", "polling"],
 });
 
 function App() {
@@ -19,51 +19,65 @@ function App() {
     currentPlayer: null,
     status: "lobby",
     winner: null,
-    winningCells: []
+    winningCells: [],
   });
   const [notification, setNotification] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [isJoining, setIsJoining] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
 
+  const [localBoard, setLocalBoard] = useState([]);
+
+  const [mySymbol, setMySymbol] = useState(null);
+
   useEffect(() => {
+    socket.on("connect", () => setIsConnected(true));
+    socket.on("disconnect", () => setIsConnected(false));
+
     socket.on("gameCreated", (data) => {
-      setGameState(prev => ({
+      setMySymbol("X");
+      setGameState((prev) => ({
         ...prev,
         roomCode: data.roomCode,
         boardSize: data.boardSize,
-        status: "waiting"
+        status: "waiting",
       }));
+      setLocalBoard(
+        Array(data.boardSize)
+          .fill(null)
+          .map(() => Array(data.boardSize).fill(null))
+      );
       setScreen("waiting");
       setIsCreating(false);
       showNotification("Room created successfully!");
     });
 
     socket.on("gameStart", (game) => {
-      setGameState(prev => ({
-        ...prev,
-        ...game,
-        status: "playing"
-      }));
+      if (!mySymbol) {
+        setMySymbol("O");
+      }
+      setGameState((prev) => ({ ...prev, ...game, status: "playing" }));
+      setLocalBoard(game.board);
       setScreen("game");
       setIsJoining(false);
     });
 
     socket.on("updateGame", (game) => {
-      setGameState(prev => ({
+      setGameState((prev) => ({
         ...prev,
         board: game.board,
         currentPlayer: game.currentPlayer,
-        status: game.status
+        status: game.status,
       }));
+      setLocalBoard(game.board);
     });
 
     socket.on("gameOver", ({ winner, winningCells }) => {
-      setGameState(prev => ({
+      setGameState((prev) => ({
         ...prev,
         status: "finished",
         winner,
-        winningCells: winningCells || []
+        winningCells: winningCells || [],
       }));
     });
 
@@ -74,10 +88,10 @@ function App() {
     });
 
     socket.on("invalidMove", (msg) => showNotification(msg));
-    socket.on("connect", () => setIsConnected(true));
-    socket.on("disconnect", () => setIsConnected(false));
 
     return () => {
+      socket.off("connect");
+      socket.off("disconnect");
       socket.off("gameCreated");
       socket.off("gameStart");
       socket.off("updateGame");
@@ -85,19 +99,26 @@ function App() {
       socket.off("errorMsg");
       socket.off("invalidMove");
     };
-  }, []);
+  }, [mySymbol]);
 
   const showNotification = (message) => {
     setNotification(message);
     setTimeout(() => setNotification(""), 3000);
   };
 
+  const handleBoardSizeChange = (e) => {
+    let val = parseInt(e.target.value, 10);
+    if (Number.isNaN(val)) val = 3;
+    val = Math.max(1, Math.min(val, 10));
+    setBoardSize(val);
+  };
+
   const handleRoomCodeInput = (e) => {
     const value = e.target.value
       .toUpperCase()
-      .replace(/[^0-9]/g, '')
+      .replace(/[^0-9]/g, "")
       .substring(0, 5);
-    setGameState(prev => ({ ...prev, roomCode: value }));
+    setGameState((prev) => ({ ...prev, roomCode: value }));
   };
 
   const handleCreateGame = () => {
@@ -106,11 +127,7 @@ function App() {
       return;
     }
     setIsCreating(true);
-    setGameState(prev => ({
-      ...prev,
-      roomCode: "",
-      status: "waiting"
-    }));
+    setGameState((prev) => ({ ...prev, roomCode: "", status: "waiting" }));
     socket.emit("createGame", { playerName, boardSize });
   };
 
@@ -126,16 +143,34 @@ function App() {
     setIsJoining(true);
     socket.emit("joinGame", {
       roomCode: gameState.roomCode.toUpperCase(),
-      playerName
+      playerName,
     });
   };
 
   const makeMove = (row, col) => {
-    if (gameState.status === "finished") return;
+    if (gameState.status === "finished") {
+      showNotification("Game is already finished!");
+      return;
+    }
+
+    if (mySymbol !== gameState.currentPlayer) {
+      showNotification("It's not your turn!");
+      return;
+    }
+
+    if (localBoard[row][col]) {
+      showNotification("Cell is already occupied!");
+      return;
+    }
+
+    const updatedBoard = localBoard.map((r) => [...r]);
+    updatedBoard[row][col] = mySymbol;
+    setLocalBoard(updatedBoard);
+
     socket.emit("makeMove", {
       roomCode: gameState.roomCode,
       row,
-      col
+      col,
     });
   };
 
@@ -156,18 +191,15 @@ function App() {
           <div className="options">
             <div className="create-game">
               <h2>Create Game</h2>
-              <select
+              <input
+                type="number"
+                placeholder="Board Size (1–10)"
+                min={1}
+                max={10}
                 value={boardSize}
-                onChange={(e) => setBoardSize(Number(e.target.value))}
-              >
-                {[3, 4, 5].map(size => (
-                  <option key={size} value={size}>{size}x{size}</option>
-                ))}
-              </select>
-              <button
-                onClick={handleCreateGame}
-                disabled={isCreating}
-              >
+                onChange={handleBoardSizeChange}
+              />
+              <button onClick={handleCreateGame} disabled={isCreating}>
                 {isCreating ? "Creating..." : "Create"}
               </button>
             </div>
@@ -180,10 +212,7 @@ function App() {
                 value={gameState.roomCode}
                 onChange={handleRoomCodeInput}
               />
-              <button
-                onClick={handleJoinGame}
-                disabled={isJoining}
-              >
+              <button onClick={handleJoinGame} disabled={isJoining}>
                 {isJoining ? "Joining..." : "Join"}
               </button>
             </div>
@@ -207,10 +236,11 @@ function App() {
       {screen === "game" && (
         <div className="game-container">
           <div className="players">
-            {gameState.players.map(player => (
+            {gameState.players.map((player) => (
               <div
                 key={player.id}
-                className={`player ${player.symbol === gameState.currentPlayer ? "active" : ""}`}
+                className={`player ${player.symbol === gameState.currentPlayer ? "active" : ""
+                  }`}
               >
                 <div className="symbol">{player.symbol}</div>
                 <div className="name">{player.name}</div>
@@ -218,20 +248,18 @@ function App() {
             ))}
           </div>
 
-          <div
-            className="board"
-            style={{ "--size": gameState.boardSize }}
-          >
-            {gameState.board.map((row, rowIndex) =>
+          <div className="board" style={{ "--size": gameState.boardSize }}>
+            {localBoard.map((row, rowIndex) =>
               row.map((cell, colIndex) => (
                 <button
                   key={`${rowIndex}-${colIndex}`}
                   className={`cell ${cell || ""} ${gameState.winningCells?.some(
                     ([r, c]) => r === rowIndex && c === colIndex
-                  ) ? "winning" : ""
+                  )
+                    ? "winning"
+                    : ""
                     }`}
                   onClick={() => makeMove(rowIndex, colIndex)}
-                  disabled={!!cell || gameState.status === "finished"}
                 >
                   {cell || ""}
                 </button>
@@ -242,22 +270,18 @@ function App() {
           {gameState.status === "finished" && (
             <div className="game-over">
               {gameState.winner === "Draw" ? (
-                <h2>It's a Draw! 🎲</h2>
+                <h2>It's a Draw!</h2>
               ) : gameState.winner === "Opponent Left" ? (
-                <h2>Opponent Disconnected 🚪</h2>
+                <h2>Opponent Disconnected</h2>
               ) : (
-                <h2>🎉 {gameState.winner} Wins! 🎉</h2>
+                <h2>{gameState.winner} Wins!</h2>
               )}
             </div>
           )}
         </div>
       )}
 
-      {!isConnected && (
-        <div className="connection-status">
-          🔌 Connecting to server...
-        </div>
-      )}
+      {!isConnected && <div className="connection-status">Connecting to server...</div>}
     </div>
   );
 }

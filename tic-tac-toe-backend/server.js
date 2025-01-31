@@ -6,8 +6,8 @@ import 'dotenv/config';
 import { createClient } from 'redis';
 
 const redisClient = createClient({
-    username: 'default',
-    password: 'Q4JDH414H9w1hBhSHJfPXPTkClgSFFKT',  // Use your actual credentials
+    username: process.env.REDIS_USERNAME,
+    password: process.env.REDIS_PASS,  
     socket: {
         host: 'redis-16083.c330.asia-south1-1.gce.redns.redis-cloud.com',
         port: 16083
@@ -29,7 +29,7 @@ const io = new Server(server, {
 
 const PORT = process.env.PORT;
 
-// Utility functions
+
 async function generateRoomCode() {
     let code;
     let exists;
@@ -84,7 +84,7 @@ function isBoardFull(board) {
     return board.every(row => row.every(cell => cell));
 }
 
-// Socket and room logic
+
 io.on("connection", (socket) => {
     console.log(`New connection: ${socket.id}`);
 

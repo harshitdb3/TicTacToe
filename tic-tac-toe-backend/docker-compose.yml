@@ -5,6 +5,8 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=8080
+      - REDIS_USERNAME=default  # Docker service name or host
+      - REDIS_PASS=Q4JDH414H9w1hBhSHJfPXPTkClgSFFKT
     ports:
       - "8080:8080"
     expose:
