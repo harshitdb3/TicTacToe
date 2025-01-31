@@ -1,0 +1,22 @@
+services:
+  backend:
+    build: .
+    container_name: backend
+    environment:
+      - NODE_ENV=production
+      - PORT=8080
+    ports:
+      - "8080:8080"
+    expose:
+      - "8080"
+    networks:
+      - tictactoe_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+networks:
+  tictactoe_net:
+    driver: bridge
