@@ -3,7 +3,8 @@ import io from "socket.io-client";
 import { CopyToClipboard } from "react-copy-to-clipboard";
 import "./App.css";
 
-const socket = io("https://tictac-227035147749.us-central1.run.app", {
+const env = process.env.NODE_ENV || "development";
+const socket = io(env, {
   transports: ["websocket", "polling"],
 });
 
